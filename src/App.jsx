@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, Pencil, Trash2, X, Check, Loader2 } from 'lucide-react';
+import { Pencil, Trash2, UserPlus, Users } from 'lucide-react';
 
 function App() {
   const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [newUser, setNewUser] = useState({ name: '', email: '', phone: '' });
-  const [isAdding, setIsAdding] = useState(false);
-  const [error, setError] = useState('');
+  const [editingUser, setEditingUser] = useState(null);
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    company: '',
+  });
 
   useEffect(() => {
     fetchUsers();
@@ -16,242 +19,216 @@ function App() {
     try {
       const response = await fetch('https://jsonplaceholder.typicode.com/users');
       const data = await response.json();
-      setUsers(data.map((user) => ({ ...user, isEditing: false })));
-      setLoading(false);
-    } catch (err) {
-      setError('Failed to fetch users');
-      setLoading(false);
+      const formattedUsers = data.map((user) => ({
+        id: user.id,
+        firstName: user.name.split(' ')[0],
+        lastName: user.name.split(' ')[1] || '',
+        email: user.email,
+        company: { name: user.company.name },
+      }));
+      setUsers(formattedUsers);
+    } catch (error) {
+      console.error('Error fetching users:', error);
     }
   };
 
-  const handleAddUser = async () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    const userData = {
+      name: `${formData.firstName} ${formData.lastName}`,
+      email: formData.email,
+      company: { name: formData.company },
+    };
+
     try {
-      const response = await fetch('https://jsonplaceholder.typicode.com/users', {
-        method: 'POST',
-        body: JSON.stringify(newUser),
-        headers: {
-          'Content-type': 'application/json',
-        },
-      });
-      const data = await response.json();
-      setUsers([...users, { ...data, isEditing: false }]);
-      setNewUser({ name: '', email: '', phone: '' });
-      setIsAdding(false);
-    } catch (err) {
-      setError('Failed to add user');
+      if (editingUser) {
+        // Update user
+        const response = await fetch(`https://jsonplaceholder.typicode.com/users/${editingUser.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(userData),
+          headers: {
+            'Content-type': 'application/json',
+          },
+        });
+        const updatedUser = await response.json();
+        
+        setUsers(users.map(user => 
+          user.id === editingUser.id 
+            ? {
+                ...user,
+                firstName: formData.firstName,
+                lastName: formData.lastName,
+                email: formData.email,
+                company: { name: formData.company },
+              }
+            : user
+        ));
+      } else {
+        // Add new user
+        const response = await fetch('https://jsonplaceholder.typicode.com/users', {
+          method: 'POST',
+          body: JSON.stringify(userData),
+          headers: {
+            'Content-type': 'application/json',
+          },
+        });
+        const newUser = await response.json();
+        
+        setUsers([...users, {
+          id: users.length + 1, // JSONPlaceholder always returns id: 11 for new items
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          company: { name: formData.company },
+        }]);
+      }
+
+      // Reset form
+      setFormData({ firstName: '', lastName: '', email: '', company: '' });
+      setEditingUser(null);
+    } catch (error) {
+      console.error('Error saving user:', error);
     }
   };
 
-  const handleDeleteUser = async (id) => {
+  const handleDelete = async (id) => {
     try {
       await fetch(`https://jsonplaceholder.typicode.com/users/${id}`, {
         method: 'DELETE',
       });
       setUsers(users.filter(user => user.id !== id));
-    } catch (err) {
-      setError('Failed to delete user');
+    } catch (error) {
+      console.error('Error deleting user:', error);
     }
   };
 
-  const handleEditUser = (id) => {
-    setUsers(users.map(user => 
-      user.id === id ? { ...user, isEditing: true } : user
-    ));
+  const handleEdit = (user) => {
+    setEditingUser(user);
+    setFormData({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      company: user.company.name,
+    });
   };
-
-  const handleUpdateUser = async (id) => {
-    const user = users.find(u => u.id === id);
-    if (!user) return;
-
-    try {
-      const response = await fetch(`https://jsonplaceholder.typicode.com/users/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(user),
-        headers: {
-          'Content-type': 'application/json',
-        },
-      });
-      const data = await response.json();
-      setUsers(users.map(u => 
-        u.id === id ? { ...data, isEditing: false } : u
-      ));
-    } catch (err) {
-      setError('Failed to update user');
-    }
-  };
-
-  const handleInputChange = (id, field, value) => {
-    setUsers(users.map(user =>
-      user.id === id ? { ...user, [field]: value } : user
-    ));
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-grey-50 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-      </div>
-    );
-  }
 
   return (
-    <div className="min-h-screen bg-yellow-50 p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
-            <button
-              onClick={() => setIsAdding(true)}
-              className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors"
-            >
-              <PlusCircle className="w-5 h-5" />
-              Add User
-            </button>
-          </div>
+    <div className="min-h-screen bg-yellow-100 py-8 px-4">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+            <Users className="h-8 w-8" />
+            User Management
+          </h1>
+        </div>
 
-          {error && (
-            <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-md">
-              {error}
+        {/* Form */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+          <h2 className="text-xl font-semibold mb-4">
+            {editingUser ? 'Edit User' : 'Add New User'}
+          </h2>
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">First Name</label>
+              <input
+                type="text"
+                value={formData.firstName}
+                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                required
+              />
             </div>
-          )}
-
-          {isAdding && (
-            <div className="mb-6 p-4 border rounded-md bg-gray-50">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <input
-                  type="text"
-                  placeholder="Name"
-                  value={newUser.name}
-                  onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                  className="p-2 border rounded-md"
-                />
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  className="p-2 border rounded-md"
-                />
-                <input
-                  type="tel"
-                  placeholder="Phone"
-                  value={newUser.phone}
-                  onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
-                  className="p-2 border rounded-md"
-                />
-              </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <button
-                  onClick={() => setIsAdding(false)}
-                  className="flex items-center gap-1 px-3 py-1 border rounded-md hover:bg-gray-100"
-                >
-                  <X className="w-4 h-4" /> Cancel
-                </button>
-                <button
-                  onClick={handleAddUser}
-                  className="flex items-center gap-1 px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-                >
-                  <Check className="w-4 h-4" /> Save
-                </button>
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Last Name</label>
+              <input
+                type="text"
+                value={formData.lastName}
+                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-blue-500"
+                required
+              />
             </div>
-          )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Email</label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">department</label>
+              <input
+                type="text"
+                value={formData.company}
+                onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                required
+              />
+            </div>
+            <div className="md:col-span-2">
+              <button
+                type="submit"
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                {editingUser ? (
+                  <>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Update User
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Add User
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-4 py-2 text-left">Name</th>
-                  <th className="px-4 py-2 text-left">Email</th>
-                  <th className="px-4 py-2 text-left">Phone</th>
-                  <th className="px-4 py-2 text-right">Actions</th>
+        {/* Users Table */}
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">First Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">department</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {users.map((user) => (
+                <tr key={user.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.id}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.firstName}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.lastName}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.email}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{user.company.name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                    <button
+                      onClick={() => handleEdit(user)}
+                      className="text-blue-600 hover:text-blue-900"
+                    >
+                      <Pencil className="h-5 w-5" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(user.id)}
+                      className="text-red-600 hover:text-red-900"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => (
-                  <tr key={user.id} className="border-t">
-                    <td className="px-4 py-2">
-                      {user.isEditing ? (
-                        <input
-                          type="text"
-                          value={user.name}
-                          onChange={(e) => handleInputChange(user.id, 'name', e.target.value)}
-                          className="p-1 border rounded-md w-full"
-                        />
-                      ) : (
-                        user.name
-                      )}
-                    </td>
-                    <td className="px-4 py-2">
-                      {user.isEditing ? (
-                        <input
-                          type="email"
-                          value={user.email}
-                          onChange={(e) => handleInputChange(user.id, 'email', e.target.value)}
-                          className="p-1 border rounded-md w-full"
-                        />
-                      ) : (
-                        user.email
-                      )}
-                    </td>
-                    <td className="px-4 py-2">
-                      {user.isEditing ? (
-                        <input
-                          type="tel"
-                          value={user.phone}
-                          onChange={(e) => handleInputChange(user.id, 'phone', e.target.value)}
-                          className="p-1 border rounded-md w-full"
-                        />
-                      ) : (
-                        user.phone
-                      )}
-                    </td>
-                    <td className="px-4 py-2">
-                      <div className="flex justify-end gap-2">
-                        {user.isEditing ? (
-                          <>
-                            <button
-                              onClick={() => handleUpdateUser(user.id)}
-                              className="p-1 text-green-600 hover:text-green-700"
-                              title="Save"
-                            >
-                              <Check className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => setUsers(users.map(u => 
-                                u.id === user.id ? { ...u, isEditing: false } : u
-                              ))}
-                              className="p-1 text-gray-600 hover:text-gray-700"
-                              title="Cancel"
-                            >
-                              <X className="w-5 h-5" />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => handleEditUser(user.id)}
-                              className="p-1 text-blue-600 hover:text-blue-700"
-                              title="Edit"
-                            >
-                              <Pencil className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteUser(user.id)}
-                              className="p-1 text-red-600 hover:text-red-700"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-5 h-5" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
